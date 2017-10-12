@@ -1,0 +1,123 @@
+---
+title: "(tentative de) Visualisation des données du climat à Rennes depuis 1999 avec R"
+date: 2017-10-12
+output: html_document
+---
+  
+  ```{r, include = FALSE}
+library(tidyverse)
+library(SPARQL)
+library(lubridate)
+library(stringr)
+
+knitr::opts_chunk$set(
+  warning = FALSE,
+  fig.width = 6,
+  out.width = "80%",
+  fig.asp = 1.5,
+  fig.align = "center"
+)
+```
+
+Après être tombé sur l'infographie ["Rain patterns in Hong Kong, Some of the wettest and driest days since 1990"](http://www.scmp.com/infographics/article/1243242/rain-patterns-hong-kong) du South China Morning Post, j'ai cherché à produire une visualisation similaire des données climatologiques mais appliquée à la ville de Rennes. Le code source est disponible sur [Github](https://github.com/neveldo/rstats-weather).
+
+Des données climatologiques sont disponibles en Licence Ouverte Etalab sur **Météo-France** au travers de [bulletins climatiques mensuels](https://donneespubliques.meteofrance.fr/?fond=produit&id_produit=129&id_rubrique=52). Malheureusement, seuls des résumés mensuels (températures moyennes, cumuls de précipitation, etc) sont accessibles. Impossible d'y trouver des données quotidiennes donc (Météo-France, si vous me lisez ...).
+
+Dans le code R ci-dessous, les données ont déjà été préalablement nettoyées, structurées et stockées au sein d'un [triplestore RDF](https://fr.wikipedia.org/wiki/Triplestore) que nous pouvons donc directement interroger en **[SPARL](https://fr.wikipedia.org/wiki/SPARQL)** à l'aide du package `{SPARQL}`.
+
+Comme je n'ai que les données mensualisées sous la main, j'ai tenté de visualiser certaines variables en plaçant les mois de l'année en abscisses (de janvier à février) et les années en ordonnées (de 1999 à 2017) dans l'espoir de pouvoir mettre en évidence des mois "exceptionnels" (en terme de pluie, d'insolation, etc). **Malheureusement, comme je le pressentais, le rendu n'est finalement pas très probant et nous n'apprenons pas grand chose.** En effet, les données étant résumées par mois, elles s'en retrouvent trop "lissées". Les données quotidiennes auraient permis de mettre en évidence des pics de chaleur ou de pluie ayant duré quelques jours. 
+
+Malgré tout, on peut quand même y repérer facilement quelques "exceptions". Par exemple, le mois de **juin 2016** a été particulièrement pauvre en insolation avec un total de seulement 90 heures. Voir par exemple l'article du Télégramme à ce sujet : [Bretagne. Mais où est passé le soleil ?](http://www.letelegramme.fr/bretagne/bretagne-mais-ou-est-passe-le-soleil-01-07-2016-11131736.php).
+On peut également voir que le mois de **janvier 2017** a été particulièrement froid avec une moyenne des températures minimales de -0.3°. Voir [l'article du Télégramme à ce sujet](http://www.letelegramme.fr/finistere/chateaulin/froid-jusqu-a-9-c-a-chateaulin-la-nuit-prochaine-20-01-2017-11370397.php?vptoken=754e5dd2f086459369e5c1ba833110f4e30a39e2).
+
+**Note** : L’objectif était simplement d’avoir un prétexte pour continuer mon apprentissage de R, du format R Markdown ainsi que de certains packages par la pratique. On pourrait bien sûr améliorer la pertinence de cette mini-infographie avec des données quotidiennes, en y ajoutant de l’interactivité, par exemple en permettant à l’utilisateur de comparer les données avec celles des autres stations météo, exploiter d’autres variables, etc.
+
+```{r}
+endpoint <- "" # Configure your triplestore endpoint here
+
+query <- "
+SELECT ?label xsd:string(?date) as ?date ?hrr ?ins ?tn ?tx WHERE {
+  ?weatherReport a weather:Report ;
+    weather:linkedToStation ?station ; 
+    weather:reportDate ?date ;
+    weather:hrrMm ?hrr ;
+    weather:instH ?ins ;
+    weather:tnC ?tn ;
+    weather:txC ?tx .
+  ?station rdfs:label 'Rennes' ;
+    rdfs:label ?label .
+}
+"
+
+results <- SPARQL(endpoint, query)$results %>% 
+  as.tibble() %>%
+  mutate(
+    year = factor(year(date)),
+    month = factor(month(date), labels = c("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"))
+  )
+
+```
+
+```{r, echo = FALSE}
+knitr::kable(results[1:5, ], caption = 'Contenu de results')
+```
+
+``` {r}
+results %>%
+  ggplot(aes(x = year, y = hrr, group = 1)) +
+  geom_col(fill = "#4286f4") +
+  labs(
+    title = "La pluie à Rennes depuis 1999",
+    x = "Année",
+    y = "Hauteur des précipitations cumulées par mois (millimètres)"
+  ) +
+  facet_wrap(~month, ncol = 1) +
+  scale_x_discrete(breaks=seq(1999, 2017, 2)) +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = rel(0.8)))
+```
+
+``` {r}
+results %>%
+  ggplot(aes(x = year, y = ins, group = 1)) +
+  geom_col(fill = "#f4c141") +
+  labs(
+    title = "L'insolation à Rennes depuis 1999",
+    x = "Année",
+    y = "Durée d'insolation par mois (heures)"
+  ) +
+  facet_wrap(~month, ncol = 1) +
+  scale_x_discrete(breaks=seq(1999, 2017, 2)) +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = rel(0.8)))
+```
+
+``` {r}
+results %>%
+  ggplot(aes(x = year, y = tx, group = 1)) +
+  geom_col(fill = "#c41313") +
+  labs(
+    title = "Les températures maximales moyennes à Rennes depuis 1999",
+    x = "Année",
+    y = "Moyenne des températures maximales par mois (C°)"
+  ) +
+  facet_wrap(~month, ncol = 1) +
+  scale_x_discrete(breaks=seq(1999, 2017, 2)) +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = rel(0.8)))
+```
+
+``` {r}
+results %>%
+  ggplot(aes(x = year, y = tn, group = 1)) +
+  geom_col(fill = "#0b3260") +
+  labs(
+    title = "Les températures minimales moyennes à Rennes depuis 1999",
+    x = "Année",
+    y = "Moyenne des température minimale par mois (C°)"
+  ) +
+  facet_wrap(~month, ncol = 1) +
+  scale_x_discrete(breaks=seq(1999, 2017, 2)) +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = rel(0.7)))
+```

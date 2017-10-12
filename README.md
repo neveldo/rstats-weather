@@ -1,0 +1,1 @@
+Monthly weather data from 1999 to 2017 for Rennes city visualized through R. The Source data are available on [Meteo-France](https://donneespubliques.meteofrance.fr/?fond=produit&id_produit=129&id_rubrique=52). The purpose for now is just to learn R, R markdown format and some packages.
